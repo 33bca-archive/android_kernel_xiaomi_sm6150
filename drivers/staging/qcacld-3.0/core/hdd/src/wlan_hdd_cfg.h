@@ -150,5 +150,6 @@ static const char wlan_cfg[] = {
 	"extscan_adaptive_dwell_mode=1\n"
 	"pnoscan_adaptive_dwell_mode=1\n"
 	"gcmp_enabled=0\n"
+	"gEnableConcurrentSTA=wlan1\n"
 	"END\n"
 };
