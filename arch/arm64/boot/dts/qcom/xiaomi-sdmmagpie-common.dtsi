@@ -18,6 +18,8 @@
 
 #include "sdmmagpie-sde-display.dtsi"
 
+#include "sdmmagpie-ramoops.dtsi"
+
 &soc {
 	mtp_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
