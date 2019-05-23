@@ -517,35 +517,14 @@ static long gf_compat_ioctl(struct file *filp, unsigned int cmd,
 }
 #endif /*CONFIG_COMPAT*/
 
-#ifndef GOODIX_DRM_INTERFACE_WA
-static void notification_work(struct work_struct *work)
-{
-	pr_debug("%s unblank\n", __func__);
-	dsi_bridge_interface_enable(FP_UNLOCK_REJECTION_TIMEOUT);
-}
-#endif
-
 static irqreturn_t gf_irq(int irq, void *handle)
 {
-	struct gf_dev *gf_dev = &gf;
 #if defined(GF_NETLINK_ENABLE)
 	char msg = 0;
-	uint32_t key_input = 0;
 	msg = GF_NET_EVENT_IRQ;
 	pr_debug("%s enter\n", __func__);
 	__pm_wakeup_event(&fp_wakelock, WAKELOCK_HOLD_TIME);
 	sendnlmsg(&msg);
-
-	if ((gf_dev->wait_finger_down == true) && (gf_dev->device_available == 1) &&
-		(gf_dev->fb_black == 1)) {
-		key_input = KEY_RIGHT;
-		input_report_key(gf_dev->input, key_input, 1);
-		input_sync(gf_dev->input);
-		input_report_key(gf_dev->input, key_input, 0);
-		input_sync(gf_dev->input);
-		gf_dev->wait_finger_down = false;
-		schedule_work(&gf_dev->work);
-	}
 
 #elif defined (GF_FASYNC)
 	struct gf_dev *gf_dev = &gf;
@@ -740,8 +719,6 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 		switch (blank) {
 			case MSM_DRM_BLANK_POWERDOWN:
 				if (gf_dev->device_available == 1) {
-					gf_dev->fb_black = 1;
-					gf_dev->wait_finger_down = true;
 #if defined(GF_NETLINK_ENABLE)
 					msg = GF_NET_EVENT_FB_BLACK;
 					sendnlmsg(&msg);
@@ -757,7 +734,6 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 
 			case MSM_DRM_BLANK_UNBLANK:
 				if (gf_dev->device_available == 1) {
-					gf_dev->fb_black = 0;
 #if defined(GF_NETLINK_ENABLE)
 					msg = GF_NET_EVENT_FB_UNBLACK;
 					sendnlmsg(&msg);
@@ -808,11 +784,6 @@ static int gf_probe(struct platform_device *pdev)
 	gf_dev->reset_gpio = -EINVAL;
 	gf_dev->pwr_gpio = -EINVAL;
 	gf_dev->device_available = 0;
-	gf_dev->fb_black = 0;
-	gf_dev->wait_finger_down = false;
-#ifndef GOODIX_DRM_INTERFACE_WA
-	INIT_WORK(&gf_dev->work, notification_work);
-#endif
 
 	if (gf_parse_dts(gf_dev)) {
 		goto error_hw;
