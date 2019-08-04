@@ -97,6 +97,32 @@
 		};
 	};
 
+	dsi_amoled_panel_pwr_supply: dsi_amoled_panel_pwr_supply {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,panel-supply-entry@0 {
+			reg = <0>;
+			qcom,supply-name = "vddioL14A";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <62000>;
+			qcom,supply-disable-load = <80>;
+			//qcom,supply-post-on-sleep = <20>;
+		};
+
+		qcom,panel-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "vci";
+			qcom,supply-min-voltage = <3000000>;
+			qcom,supply-max-voltage = <3000000>;
+			qcom,supply-enable-load = <62000>;
+			qcom,supply-disable-load = <80>;
+			qcom,supply-post-on-sleep = <10>;
+			qcom,supply-pre-off-sleep = <10>;
+		};
+	};
+
 	dsi_sim_vid_display: qcom,dsi-display@0 {
 		label = "dsi_sim_vid_display";
 		qcom,display-type = "primary";
@@ -204,7 +230,7 @@
 
 		qcom,dsi-ctrl-num = <0>;
 		qcom,dsi-phy-num = <0>;
-		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+		qcom,dsi-select-clocks = "src_byte_clk0", "src_pixel_clk0";
 
 		qcom,dsi-panel = <&dsi_sharp_split_link_wuxga_video>;
 	};
@@ -231,6 +257,7 @@
 		qcom,platform-te-gpio = <&tlmm 90 0>;
 
 		vddio-supply = <&pm6150_l13>;
+		vddioL14A-supply = <&pm6150_l14>;
 		vdda-3p3-supply = <&pm6150_l18>;
 		lab-supply = <&lcdb_ldo_vreg>;
 		ibb-supply = <&lcdb_ncp_vreg>;
@@ -504,7 +531,6 @@
 				26 20 09 0B 06 02 04 a0
 				26 20 09 0B 06 02 04 a0
 				26 1F 09 0B 06 02 04 a0];
-
 			qcom,display-topology = <1 0 1>;
 			qcom,default-topology-index = <0>;
 		};

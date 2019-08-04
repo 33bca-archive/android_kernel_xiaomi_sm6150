@@ -56,7 +56,3 @@
 		status = "disabled";
 	};
 };
-
-&dsi_td4328_truly_cmd_display {
-	qcom,dsi-display-active;
-};
