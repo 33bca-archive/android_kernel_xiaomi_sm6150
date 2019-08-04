@@ -184,8 +184,8 @@
 		};
 
 		i2c_freq_400Khz: qcom,i2c_fast_mode {
-			hw-thigh = <38>;
-			hw-tlow = <56>;
+			hw-thigh = <48>;
+			hw-tlow = <46>;
 			hw-tsu-sto = <40>;
 			hw-tsu-sta = <40>;
 			hw-thd-dat = <22>;
