@@ -435,8 +435,8 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 {
 	int rc = 0;
 	int i, j;
-	struct cam_ctx_request  *req;
-	struct cam_isp_ctx_req  *req_isp;
+	struct cam_ctx_request  *req, *next_req;
+	struct cam_isp_ctx_req  *req_isp, *next_req_isp;
 	struct cam_context *ctx = ctx_isp->base;
 
 	if (list_empty(&ctx->active_req_list)) {
@@ -648,6 +648,11 @@ static void __cam_isp_ctx_send_sof_timestamp(
 		 request_id, ctx_isp->frame_id,
 		ctx_isp->sof_timestamp_val, ctx_isp->prev_sof_timestamp_val);
 	CAM_DBG(CAM_ISP, "sof status:%d", sof_event_status);
+
+	CAM_DBG(CAM_XIAOMI,
+		"request id:%lld frame number:%lld boot time stamp:0x%llx, sof status:%d",
+		 request_id, ctx_isp->frame_id,
+		 ctx_isp->boot_timestamp, sof_event_status);
 
 	if (cam_req_mgr_notify_message(&req_msg,
 		V4L_EVENT_CAM_REQ_MGR_SOF, V4L_EVENT_CAM_REQ_MGR_EVENT))
@@ -3017,6 +3022,7 @@ free_req:
 	list_add_tail(&req->list, &ctx->free_req_list);
 	spin_unlock_bh(&ctx->lock);
 
+	atomic_set(&ctx_isp->process_bubble, 0);
 	return rc;
 }
 
