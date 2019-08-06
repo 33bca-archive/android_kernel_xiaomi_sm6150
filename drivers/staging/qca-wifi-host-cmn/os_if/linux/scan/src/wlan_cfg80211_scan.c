@@ -92,7 +92,7 @@ static void wlan_fill_scan_rand_attrs(struct wlan_objmgr_vdev *vdev,
 	if (wlan_vdev_mlme_get_opmode(vdev) != QDF_STA_MODE)
 		return;
 
-	if (wlan_vdev_is_connected(vdev))
+	if (wlan_vdev_is_up(vdev))
 		return;
 
 	*randomize = true;
@@ -451,10 +451,14 @@ int wlan_cfg80211_sched_scan_start(struct wlan_objmgr_pdev *pdev,
 
 	enable_dfs_pno_chnl_scan = ucfg_scan_is_dfs_chnl_scan_enabled(psoc);
 	if (request->n_channels) {
-		char chl[(request->n_channels * 5) + 1];
+		char *chl = qdf_mem_malloc((request->n_channels * 5) + 1);
 		int len = 0;
 		bool ap_or_go_present = wlan_cfg80211_is_ap_go_present(psoc);
 
+		if (!chl) {
+			ret = -ENOMEM;
+			goto error;
+		}
 		for (i = 0; i < request->n_channels; i++) {
 			channel = request->channels[i]->hw_value;
 			if (wlan_reg_is_dsrc_chan(pdev, channel))
@@ -476,6 +480,8 @@ int wlan_cfg80211_sched_scan_start(struct wlan_objmgr_pdev *pdev,
 				if (QDF_IS_STATUS_ERROR(status)) {
 					cfg80211_err("DNBS check failed");
 					qdf_mem_free(req);
+					qdf_mem_free(chl);
+					chl = NULL;
 					ret = -EINVAL;
 					goto error;
 				}
@@ -487,6 +493,8 @@ int wlan_cfg80211_sched_scan_start(struct wlan_objmgr_pdev *pdev,
 		}
 		cfg80211_notice("No. of Scan Channels: %d", num_chan);
 		cfg80211_notice("Channel-List: %s", chl);
+		qdf_mem_free(chl);
+		chl = NULL;
 		/* If all channels are DFS and dropped,
 		 * then ignore the PNO request
 		 */
@@ -1339,7 +1347,8 @@ int wlan_cfg80211_scan(struct wlan_objmgr_pdev *pdev,
 	 * empty, and the simultaneous scan is disabled, dont allow 2nd scan
 	 */
 	if (!wlan_cfg80211_allow_simultaneous_scan(psoc) &&
-	    !qdf_list_empty(&osif_priv->osif_scan->scan_req_q)) {
+	    !qdf_list_empty(&osif_priv->osif_scan->scan_req_q) &&
+	    wlan_vdev_mlme_get_opmode(vdev) != QDF_SAP_MODE) {
 		wlan_objmgr_vdev_release_ref(vdev, WLAN_OSIF_ID);
 		cfg80211_err("Simultaneous scan disabled, reject scan");
 		return -EBUSY;
@@ -1440,7 +1449,7 @@ int wlan_cfg80211_scan(struct wlan_objmgr_pdev *pdev,
 		qdf_set_macaddr_broadcast(&req->scan_req.bssid_list[0]);
 
 	if (request->n_channels) {
-		char chl[(request->n_channels * 5) + 1];
+		char *chl = qdf_mem_malloc((request->n_channels * 5) + 1);
 		int len = 0;
 #ifdef WLAN_POLICY_MGR_ENABLE
 		bool ap_or_go_present =
@@ -1449,7 +1458,10 @@ int wlan_cfg80211_scan(struct wlan_objmgr_pdev *pdev,
 			     policy_mgr_mode_specific_connection_count(
 			     psoc, PM_P2P_GO_MODE, NULL);
 #endif
-
+		if (!chl) {
+			ret = -ENOMEM;
+			goto end;
+		}
 		for (i = 0; i < request->n_channels; i++) {
 			channel = request->channels[i]->hw_value;
 			c_freq = wlan_reg_chan_to_freq(pdev, channel);
@@ -1467,6 +1479,8 @@ int wlan_cfg80211_scan(struct wlan_objmgr_pdev *pdev,
 				if (QDF_IS_STATUS_ERROR(qdf_status)) {
 					cfg80211_err("DNBS check failed");
 					qdf_mem_free(req);
+					qdf_mem_free(chl);
+					chl = NULL;
 					ret = -EINVAL;
 					goto end;
 				}
@@ -1488,6 +1502,8 @@ int wlan_cfg80211_scan(struct wlan_objmgr_pdev *pdev,
 				break;
 		}
 		cfg80211_info("Channel-List: %s", chl);
+		qdf_mem_free(chl);
+		chl = NULL;
 		cfg80211_info("No. of Scan Channels: %d", num_chan);
 	}
 	if (!num_chan) {
@@ -1499,7 +1515,7 @@ int wlan_cfg80211_scan(struct wlan_objmgr_pdev *pdev,
 	req->scan_req.chan_list.num_chan = num_chan;
 
 	/* P2P increase the scan priority */
-	if (is_p2p_scan)
+	if (is_p2p_scan || wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE)
 		req->scan_req.scan_priority = SCAN_PRIORITY_HIGH;
 	if (request->ie_len) {
 		req->scan_req.extraie.ptr = qdf_mem_malloc(request->ie_len);
