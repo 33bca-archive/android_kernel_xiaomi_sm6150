@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -202,7 +202,8 @@ static int lsm_lab_buffer_sanity(struct lsm_priv *prtd,
 }
 
 static void lsm_event_handler(uint32_t opcode, uint32_t token,
-			      uint32_t *payload, void *priv)
+			      uint32_t *payload, uint16_t client_size,
+				void *priv)
 {
 	unsigned long flags;
 	struct lsm_priv *prtd = priv;
@@ -285,15 +286,27 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 	}
 
 	case LSM_SESSION_EVENT_DETECTION_STATUS:
+                if (client_size < 3 * sizeof(uint8_t)) {
+			dev_err(rtd->dev,
+					"%s: client_size has invalid size[%d]\n",
+					__func__, client_size);
+			return;
+		}
 		status = (uint16_t)((uint8_t *)payload)[0];
 		payload_size = (uint16_t)((uint8_t *)payload)[2];
 		index = 4;
 		dev_dbg(rtd->dev,
 			"%s: event detect status = %d payload size = %d\n",
 			__func__, status, payload_size);
-	break;
+		break;
 
 	case LSM_SESSION_EVENT_DETECTION_STATUS_V2:
+		if (client_size < 2 * sizeof(uint8_t)) {
+			dev_err(rtd->dev,
+					"%s: client_size has invalid size[%d]\n",
+					__func__, client_size);
+			return;
+		}
 		status = (uint16_t)((uint8_t *)payload)[0];
 		payload_size = (uint16_t)((uint8_t *)payload)[1];
 		index = 2;
@@ -303,6 +316,12 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 		break;
 
 	case LSM_SESSION_EVENT_DETECTION_STATUS_V3:
+		if (client_size < 2 * (sizeof(uint32_t) + sizeof(uint8_t))) {
+			dev_err(rtd->dev,
+					"%s: client_size has invalid size[%d]\n",
+					__func__, client_size);
+			return;
+		}
 		event_ts_lsw = ((uint32_t *)payload)[0];
 		event_ts_msw = ((uint32_t *)payload)[1];
 		status = (uint16_t)((uint8_t *)payload)[8];
@@ -316,6 +335,13 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 
 	case LSM_SESSION_DETECTION_ENGINE_GENERIC_EVENT: {
 		struct snd_lsm_event_status *tmp;
+		if (client_size < 2 * sizeof(uint16_t)) {
+			dev_err(rtd->dev,
+					"%s: client_size has invalid size[%d]\n",
+					__func__, client_size);
+			return;
+		}
+
 
 		status = ((uint16_t *)payload)[0];
 		payload_size = ((uint16_t *)payload)[1];
@@ -338,8 +364,16 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 		prtd->det_event = tmp;
 		prtd->det_event->status = status;
 		prtd->det_event->payload_size = payload_size;
-		memcpy(prtd->det_event->payload, &((uint8_t *)payload)[4],
-		       payload_size);
+		if (client_size >= payload_size + 4) {
+			memcpy(prtd->det_event->payload,
+				&((uint8_t *)payload)[4], payload_size);
+		} else {
+			spin_unlock_irqrestore(&prtd->event_lock, flags);
+			dev_err(rtd->dev,
+				"%s: Failed to copy memory with invalid size = %d\n",
+				__func__, payload_size);
+			return;
+		}
 		prtd->event_avail = 1;
 		spin_unlock_irqrestore(&prtd->event_lock, flags);
 		wake_up(&prtd->event_wait);
@@ -381,12 +415,20 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 		prtd->event_status->payload_size = payload_size;
 
 		if (likely(prtd->event_status)) {
-			memcpy(prtd->event_status->payload,
-			       &((uint8_t *)payload)[index],
-			       payload_size);
-			prtd->event_avail = 1;
-			spin_unlock_irqrestore(&prtd->event_lock, flags);
-			wake_up(&prtd->event_wait);
+			if (client_size >= (payload_size + index)) {
+				memcpy(prtd->event_status->payload,
+					&((uint8_t *)payload)[index],
+					payload_size);
+				prtd->event_avail = 1;
+				spin_unlock_irqrestore(&prtd->event_lock, flags);
+				wake_up(&prtd->event_wait);
+			} else {
+				spin_unlock_irqrestore(&prtd->event_lock, flags);
+				dev_err(rtd->dev,
+						"%s: Failed to copy memory with invalid size = %d\n",
+						__func__, payload_size);
+				return;
+			}
 		} else {
 			spin_unlock_irqrestore(&prtd->event_lock, flags);
 			dev_err(rtd->dev,
@@ -737,7 +779,7 @@ static int msm_lsm_check_and_set_lab_controls(struct snd_pcm_substream *substrea
 	struct lsm_priv *prtd = runtime->private_data;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct lsm_hw_params *out_hw_params = &prtd->lsm_client->out_hw_params;
-	u8 chmap[out_hw_params->num_chs];
+	u8 chmap[16];
 	u32 ch_idx;
 	int rc = 0, stage_idx = p_info->stage_idx;
 
@@ -771,7 +813,7 @@ static int msm_lsm_check_and_set_lab_controls(struct snd_pcm_substream *substrea
 			prtd->lsm_client->stage_cfg[stage_idx].lab_enable = enable;
 	}
 
-	memset(chmap, 0, out_hw_params->num_chs);
+	memset(chmap, 0, sizeof(chmap));
 	/*
 	 * First channel to be read from lab is always the
 	 * best channel (0xff). For second channel onwards,
@@ -1051,7 +1093,7 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 		if (ses_data_v2.app_id != LSM_VOICE_WAKEUP_APP_ID_V2) {
 			dev_err(rtd->dev,
 				"%s:Invalid App id %d for Listen client\n",
-			       __func__, session_data.app_id);
+			       __func__, ses_data_v2.app_id);
 			rc = -EINVAL;
 			break;
 		}

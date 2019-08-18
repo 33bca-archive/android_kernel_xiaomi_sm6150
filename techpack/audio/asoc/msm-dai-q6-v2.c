@@ -1,5 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019 XiaoMi, Inc.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,9 +28,6 @@
 #include <dsp/q6core.h>
 #include "msm-dai-q6-v2.h"
 #include "codecs/core.h"
-#ifdef CONFIG_SND_SOC_TFA9874_FOR_DAVI
-#include "codecs/tfa98xx/inc/tfa_platform_interface_definition.h"
-#endif
 
 #define MSM_DAI_PRI_AUXPCM_DT_DEV_ID 1
 #define MSM_DAI_SEC_AUXPCM_DT_DEV_ID 2
@@ -2636,12 +2632,33 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 	return rc;
 }
 
+/* all ports with excursion logging requirement can use this digital_mute api */
+static int msm_dai_q6_spk_digital_mute(struct snd_soc_dai *dai,
+				       int mute)
+{
+	int port_id = dai->id;
+
+	if (mute)
+		afe_get_sp_xt_logging_data(port_id);
+
+	return 0;
+}
+
 static struct snd_soc_dai_ops msm_dai_q6_ops = {
 	.prepare	= msm_dai_q6_prepare,
 	.hw_params	= msm_dai_q6_hw_params,
 	.shutdown	= msm_dai_q6_shutdown,
 	.set_fmt	= msm_dai_q6_set_fmt,
 	.set_channel_map = msm_dai_q6_set_channel_map,
+};
+
+static struct snd_soc_dai_ops msm_dai_slimbus_0_rx_ops = {
+	.prepare	= msm_dai_q6_prepare,
+	.hw_params	= msm_dai_q6_hw_params,
+	.shutdown	= msm_dai_q6_shutdown,
+	.set_fmt	= msm_dai_q6_set_fmt,
+	.set_channel_map = msm_dai_q6_set_channel_map,
+	.digital_mute = msm_dai_q6_spk_digital_mute,
 };
 
 static int msm_dai_q6_cal_info_put(struct snd_kcontrol *kcontrol,
@@ -3856,8 +3873,13 @@ static struct snd_soc_dai_driver msm_dai_q6_usb_rx_dai = {
 	},
 	.ops = &msm_dai_q6_ops,
 	.id = AFE_PORT_ID_USB_RX,
+#ifndef CONFIG_ARCH_XIAOMI_SM6150
 	.probe = msm_dai_q6_dai_probe,
 	.remove = msm_dai_q6_dai_remove,
+#else
+	.probe = NULL,
+	.remove = NULL,
+#endif
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_usb_tx_dai = {
@@ -3880,8 +3902,13 @@ static struct snd_soc_dai_driver msm_dai_q6_usb_tx_dai = {
 	},
 	.ops = &msm_dai_q6_ops,
 	.id = AFE_PORT_ID_USB_TX,
+#ifndef CONFIG_ARCH_XIAOMI_SM6150
 	.probe = msm_dai_q6_dai_probe,
 	.remove = msm_dai_q6_dai_remove,
+#else
+	.probe = NULL,
+	.remove = NULL,
+#endif
 };
 
 static int msm_auxpcm_dev_probe(struct platform_device *pdev)
@@ -4188,7 +4215,7 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai[] = {
 			.rate_min = 8000,
 			.rate_max = 384000,
 		},
-		.ops = &msm_dai_q6_ops,
+		.ops = &msm_dai_slimbus_0_rx_ops,
 		.id = SLIMBUS_0_RX,
 		.probe = msm_dai_q6_dai_probe,
 		.remove = msm_dai_q6_dai_remove,
@@ -4934,16 +4961,7 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 		&mi2s_dai_data->rx_dai : &mi2s_dai_data->tx_dai);
 	struct msm_dai_q6_dai_data *dai_data = &mi2s_dai_config->mi2s_dai_data;
 	struct afe_param_id_i2s_cfg *i2s = &dai_data->port_config.i2s;
-#ifdef CONFIG_SND_SOC_TFA9874_FOR_DAVI
-	u16 port_id = 0;
 
-	if (msm_mi2s_get_port_id(dai->id, substream->stream,
-				&port_id) != 0) {
-		dev_err(dai->dev, "%s: Invalid Port ID 0x%x\n",
-				__func__, port_id);
-		return -EINVAL;
-	}
-#endif
 	dai_data->channels = params_channels(params);
 	switch (dai_data->channels) {
 	case 15:
@@ -5129,12 +5147,6 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 	    mi2s_dai_data->tx_dai.mi2s_dai_data.status_mask) &&
 	    test_bit(STATUS_PORT_STARTED,
 	    mi2s_dai_data->tx_dai.mi2s_dai_data.hwfree_status))) {
-#ifdef CONFIG_SND_SOC_TFA9874_FOR_DAVI
-		if (AFE_PORT_ID_TFADSP_RX == port_id ||
-			AFE_PORT_ID_TFADSP_TX == port_id) {
-			dev_dbg(dai->dev, "%s, port_id = 0x%x\n", __func__, port_id);
-		} else
-#endif
 		if ((mi2s_dai_data->tx_dai.mi2s_dai_data.rate !=
 		    mi2s_dai_data->rx_dai.mi2s_dai_data.rate) ||
 		   (mi2s_dai_data->rx_dai.mi2s_dai_data.bitwidth !=
@@ -7940,6 +7952,31 @@ static int msm_dai_q6_tdm_set_channel_map(struct snd_soc_dai *dai,
 	return rc;
 }
 
+static unsigned int tdm_param_set_slot_mask(u16 *slot_offset, int slot_width,
+						int slots_per_frame)
+{
+	unsigned int i = 0;
+	unsigned int slot_index = 0;
+	unsigned long slot_mask = 0;
+	unsigned int slot_width_bytes = slot_width / 8;
+
+	for (i = 0; i < AFE_PORT_MAX_AUDIO_CHAN_CNT; i++) {
+		if (slot_offset[i] != AFE_SLOT_MAPPING_OFFSET_INVALID) {
+			slot_index = slot_offset[i] / slot_width_bytes;
+			if (slot_index < slots_per_frame)
+				set_bit(slot_index, &slot_mask);
+			else {
+				pr_err("%s: invalid slot map setting\n",
+				       __func__);
+				return 0;
+			}
+		} else
+			break;
+	}
+
+	return slot_mask;
+}
+
 static int msm_dai_q6_tdm_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
@@ -8028,7 +8065,9 @@ static int msm_dai_q6_tdm_hw_params(struct snd_pcm_substream *substream,
 	 */
 	tdm->nslots_per_frame = tdm_group->nslots_per_frame;
 	tdm->slot_width = tdm_group->slot_width;
-	tdm->slot_mask = tdm_group->slot_mask;
+	tdm->slot_mask = tdm_param_set_slot_mask(slot_mapping->offset,
+				tdm_group->slot_width,
+				tdm_group->nslots_per_frame);
 
 	pr_debug("%s: TDM:\n"
 		"num_channels=%d sample_rate=%d bit_width=%d\n"
@@ -10460,18 +10499,6 @@ static void msm_dai_q6_cdc_dma_shutdown(struct snd_pcm_substream *substream,
 
 	if (test_bit(STATUS_PORT_STARTED, dai_data->hwfree_status))
 		clear_bit(STATUS_PORT_STARTED, dai_data->hwfree_status);
-}
-
-/* all ports with same WSA requirement can use this digital mute API */
-static int msm_dai_q6_spk_digital_mute(struct snd_soc_dai *dai,
-				       int mute)
-{
-	int port_id = dai->id;
-
-	if (mute)
-		afe_get_sp_xt_logging_data(port_id);
-
-	return 0;
 }
 
 static struct snd_soc_dai_ops msm_dai_q6_cdc_dma_ops = {

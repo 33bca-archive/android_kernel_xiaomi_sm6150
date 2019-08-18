@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,7 +10,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define DEBUG
+
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
@@ -34,7 +33,6 @@
 #include <soc/qcom/socinfo.h>
 #include <dsp/q6afe-v2.h>
 #include <dsp/q6core.h>
-#include <soc/qcom/socinfo.h>
 #include "device_event.h"
 #include "msm-pcm-routing-v2.h"
 #include "codecs/msm-cdc-pinctrl.h"
@@ -132,6 +130,32 @@ enum {
 };
 
 enum {
+	TDM_0 = 0,
+	TDM_1,
+	TDM_2,
+	TDM_3,
+	TDM_4,
+	TDM_5,
+	TDM_6,
+	TDM_7,
+	TDM_PORT_MAX,
+};
+
+enum {
+	TDM_PRI = 0,
+	TDM_SEC,
+	TDM_TERT,
+	TDM_QUAT,
+	TDM_QUIN,
+	TDM_INTERFACE_MAX,
+};
+
+struct tdm_port {
+	u32 mode;
+	u32 channel;
+};
+
+enum {
 	WSA_CDC_DMA_RX_0 = 0,
 	WSA_CDC_DMA_RX_1,
 	RX_CDC_DMA_RX_0,
@@ -191,9 +215,9 @@ struct aux_codec_dev_info {
 struct msm_asoc_mach_data {
 	struct snd_info_entry *codec_root;
 	int usbc_en2_gpio; /* used by gpio driver API */
-	struct device_node *mi2s_gpio_p[MI2S_MAX]; /* used by pinctrl API */
 	int hph_en1_gpio;
 	int hph_en0_gpio;
+	struct device_node *mi2s_gpio_p[MI2S_MAX]; /* used by pinctrl API */
 	struct device_node *dmic01_gpio_p; /* used by pinctrl API */
 	struct device_node *dmic23_gpio_p; /* used by pinctrl API */
 	struct device_node *us_euro_gpio_p; /* used by pinctrl API */
@@ -210,32 +234,6 @@ struct msm_asoc_wcd93xx_codec {
 };
 
 static struct snd_soc_card snd_soc_card_sm6150_msm;
-
-enum {
-	TDM_0 = 0,
-	TDM_1,
-	TDM_2,
-	TDM_3,
-	TDM_4,
-	TDM_5,
-	TDM_6,
-	TDM_7,
-	TDM_PORT_MAX,
-};
-
-enum {
-	TDM_PRI = 0,
-	TDM_SEC,
-	TDM_TERT,
-	TDM_QUAT,
-	TDM_QUIN,
-	TDM_INTERFACE_MAX,
-};
-
-struct tdm_port {
-	u32 mode;
-	u32 channel;
-};
 
 /* TDM default config */
 static struct dev_config tdm_rx_cfg[TDM_INTERFACE_MAX][TDM_PORT_MAX] = {
@@ -5887,7 +5885,6 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 			goto clk_off;
 		}
 		if (mi2s_intf_conf[index].msm_is_ext_mclk) {
-			mi2s_mclk[index].enable = 1;
 			pr_debug("%s: Enabling mclk, clk_freq_in_hz = %u\n",
 				__func__, mi2s_mclk[index].clk_freq_in_hz);
 			ret = afe_set_lpass_clock_v2(port_id,
@@ -5897,6 +5894,7 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 					__func__, ret);
 				goto clk_off;
 			}
+			mi2s_mclk[index].enable = 1;
 		}
 		if (pdata->mi2s_gpio_p[index])
 			msm_cdc_pinctrl_select_active_state(
@@ -5939,17 +5937,16 @@ static void msm_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 		if (ret < 0)
 			pr_err("%s:clock disable failed for MI2S (%d); ret=%d\n",
 				__func__, index, ret);
-	}
 
-	if (mi2s_intf_conf[index].msm_is_ext_mclk) {
-		mi2s_mclk[index].enable = 0;
-		pr_debug("%s: Disabling mclk, clk_freq_in_hz = %u\n",
-			 __func__, mi2s_mclk[index].clk_freq_in_hz);
-		ret = afe_set_lpass_clock_v2(port_id,
-					     &mi2s_mclk[index]);
-		if (ret < 0) {
-			pr_err("%s: mclk disable failed for MCLK (%d); ret=%d\n",
-				__func__, index, ret);
+		if (mi2s_intf_conf[index].msm_is_ext_mclk) {
+			pr_debug("%s: Disabling mclk, clk_freq_in_hz = %u\n",
+				 __func__, mi2s_mclk[index].clk_freq_in_hz);
+			ret = afe_set_lpass_clock_v2(port_id,
+						     &mi2s_mclk[index]);
+			if (ret < 0)
+				pr_err("%s: mclk disable failed for MCLK (%d); ret=%d\n",
+					__func__, index, ret);
+			mi2s_mclk[index].enable = 0;
 		}
 	}
 	mutex_unlock(&mi2s_intf_conf[index].lock);
@@ -6573,7 +6570,7 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.dynamic = 1,
 		.dpcm_capture = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
-				SND_SOC_DPCM_TRIGGER_POST},
+			    SND_SOC_DPCM_TRIGGER_POST},
 		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
 		.ignore_suspend = 1,
 		.codec_dai_name = "snd-soc-dummy-dai",
@@ -6644,7 +6641,7 @@ static struct snd_soc_dai_link msm_tavil_fe_dai_links[] = {
 	},
 #endif
 	/* Ultrasound RX DAI Link */
-	{
+	{/* hw:x,38 */
 		.name = "SLIMBUS_2 Hostless Playback",
 		.stream_name = "SLIMBUS_2 Hostless Playback",
 		.cpu_dai_name = "msm-dai-q6-dev.16388",
@@ -6657,7 +6654,7 @@ static struct snd_soc_dai_link msm_tavil_fe_dai_links[] = {
 		.ops = &msm_slimbus_2_be_ops,
 	},
 	/* Ultrasound TX DAI Link */
-	{
+	{/* hw:x,39 */
 		.name = "SLIMBUS_2 Hostless Capture",
 		.stream_name = "SLIMBUS_2 Hostless Capture",
 		.cpu_dai_name = "msm-dai-q6-dev.16389",

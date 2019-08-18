@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -484,8 +483,6 @@ static void lpi_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned int i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-		/* skip lpi gpio 0~7 and 12 ~ 17 */
-		if(i < 8 || (i > 11 && i < 18))continue;
 		lpi_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}
@@ -726,7 +723,44 @@ static int lpi_pinctrl_runtime_suspend(struct device *dev)
 	return 0;
 }
 
+int lpi_pinctrl_suspend(struct device *dev)
+{
+	int ret = 0;
+
+	dev_dbg(dev, "%s: system suspend\n", __func__);
+
+	if ((!pm_runtime_enabled(dev) || !pm_runtime_suspended(dev))) {
+		ret = lpi_pinctrl_runtime_suspend(dev);
+		if (!ret) {
+			/*
+			 * Synchronize runtime-pm and system-pm states:
+			 * At this point, we are already suspended. If
+			 * runtime-pm still thinks its active, then
+			 * make sure its status is in sync with HW
+			 * status. The three below calls let the
+			 * runtime-pm know that we are suspended
+			 * already without re-invoking the suspend
+			 * callback
+			 */
+			pm_runtime_disable(dev);
+			pm_runtime_set_suspended(dev);
+			pm_runtime_enable(dev);
+		}
+	}
+
+	return ret;
+}
+
+int lpi_pinctrl_resume(struct device *dev)
+{
+	return 0;
+}
+
 static const struct dev_pm_ops lpi_pinctrl_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(
+		lpi_pinctrl_suspend,
+		lpi_pinctrl_resume
+	)
 	SET_RUNTIME_PM_OPS(
 		lpi_pinctrl_runtime_suspend,
 		lpi_pinctrl_runtime_resume,
@@ -744,7 +778,17 @@ static struct platform_driver lpi_pinctrl_driver = {
 	.remove = lpi_pinctrl_remove,
 };
 
-module_platform_driver(lpi_pinctrl_driver);
+static int __init lpi_init(void)
+{
+	return platform_driver_register(&lpi_pinctrl_driver);
+}
+late_initcall(lpi_init);
+
+static void __exit lpi_exit(void)
+{
+	platform_driver_unregister(&lpi_pinctrl_driver);
+}
+module_exit(lpi_exit);
 
 MODULE_DESCRIPTION("QTI LPI GPIO pin control driver");
 MODULE_LICENSE("GPL v2");

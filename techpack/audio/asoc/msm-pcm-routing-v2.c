@@ -1,5 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019 XiaoMi, Inc.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -46,13 +45,6 @@
 #include "msm-qti-pp-config.h"
 #include "msm-dolby-dap-config.h"
 #include "msm-ds2-dap-config.h"
-#include "dsp/smart_amp.h"
-#ifdef SMART_AMP
-#include "tas2562-calib.h"
-#endif
-#ifdef CONFIG_SND_SOC_TFA9874_FOR_DAVI
-#include "codecs/tfa98xx/inc/tfa_platform_interface_definition.h"
-#endif
 
 #ifndef CONFIG_DOLBY_DAP
 #undef DOLBY_ADM_COPP_TOPOLOGY_ID
@@ -88,8 +80,6 @@ static int msm_ec_ref_bit_format = SNDRV_PCM_FORMAT_S16_LE;
 static int msm_ec_ref_sampling_rate = 48000;
 static uint32_t voc_session_id = ALL_SESSION_VSID;
 static int msm_route_ext_ec_ref;
-static int wakeup_ext_ec_ref = 0;
-static int voip_ext_ec_common_ref = 0;
 static bool is_custom_stereo_on;
 static bool is_ds2_on;
 static bool swap_ch;
@@ -3796,16 +3786,9 @@ static const struct snd_kcontrol_new ec_ref_param_controls[] = {
 static int msm_routing_ec_ref_rx_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_dapm_widget *widget =
-		snd_soc_dapm_kcontrol_widget(kcontrol);
-
-	pr_debug("%s: wakeup_ext_ec_ref  = %d, voip_ext_ec_common_ref = %d",
-			__func__, wakeup_ext_ec_ref, voip_ext_ec_common_ref);
+	pr_debug("%s: ec_ref_rx  = %d", __func__, msm_route_ec_ref_rx);
 	mutex_lock(&routing_lock);
-	if (!strncmp(widget->name, "AUDIO_REF_EC_UL10 MUX", strlen("AUDIO_REF_EC_UL10 MUX")))
-		ucontrol->value.integer.value[0] = voip_ext_ec_common_ref;
-	else
-		ucontrol->value.integer.value[0] = wakeup_ext_ec_ref;
+	ucontrol->value.integer.value[0] = msm_route_ec_ref_rx;
 	mutex_unlock(&routing_lock);
 	return 0;
 }
@@ -3818,14 +3801,13 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 		snd_soc_dapm_kcontrol_widget(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	struct snd_soc_dapm_update *update = NULL;
-	bool state = true;
+
 
 	mutex_lock(&routing_lock);
 	switch (ucontrol->value.integer.value[0]) {
 	case 0:
 		msm_route_ec_ref_rx = 0;
 		ec_ref_port_id = AFE_PORT_INVALID;
-		state = false;
 		break;
 	case 1:
 		msm_route_ec_ref_rx = 1;
@@ -3972,29 +3954,14 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 		pr_err("%s EC ref rx %ld not valid\n",
 			__func__, ucontrol->value.integer.value[0]);
 		ec_ref_port_id = AFE_PORT_INVALID;
-		state = false;
 		break;
 	}
-
+	adm_ec_ref_rx_id(ec_ref_port_id);
 	pr_debug("%s: msm_route_ec_ref_rx = %d\n",
-			__func__, msm_route_ec_ref_rx);
-
-	if (!strncmp(widget->name, "AUDIO_REF_EC_UL10 MUX", strlen("AUDIO_REF_EC_UL10 MUX")))
-		voip_ext_ec_common_ref = msm_route_ec_ref_rx;
-	else
-		wakeup_ext_ec_ref = msm_route_ec_ref_rx;
-	pr_debug("%s: state %d, wakeup_ext_ec_ref %d, voip_ext_ec_common_ref %d\n", __func__,
-			state, wakeup_ext_ec_ref, voip_ext_ec_common_ref);
-
-	if (state || (!state && wakeup_ext_ec_ref == 0 && voip_ext_ec_common_ref == 0)) {
-		pr_info("%s: update state!\n", __func__);
-		adm_ec_ref_rx_id(ec_ref_port_id);
-		mutex_unlock(&routing_lock);
-		snd_soc_dapm_mux_update_power(widget->dapm, kcontrol,
+	    __func__, msm_route_ec_ref_rx);
+	mutex_unlock(&routing_lock);
+	snd_soc_dapm_mux_update_power(widget->dapm, kcontrol,
 					msm_route_ec_ref_rx, e, update);
-	} else {
-		mutex_unlock(&routing_lock);
-	}
 	return 0;
 }
 
@@ -23710,9 +23677,6 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 			platform, msm_routing_feature_support_mixer_controls,
 			ARRAY_SIZE(msm_routing_feature_support_mixer_controls));
 
-#ifdef SMART_AMP
-	msm_smartamp_add_controls(platform);
-#endif
 	return 0;
 }
 
@@ -23877,18 +23841,11 @@ int __init msm_soc_routing_platform_init(void)
 	memset(&be_dai_name_table, 0, sizeof(be_dai_name_table));
 	memset(&last_be_id_configured, 0, sizeof(last_be_id_configured));
 
-#ifdef SMART_AMP
-	pr_info("%s tas_calib_init", __func__);
-	tas_calib_init();
-#endif
 	return platform_driver_register(&msm_routing_pcm_driver);
 }
 
 void msm_soc_routing_platform_exit(void)
 {
-#ifdef SMART_AMP
-	tas_calib_exit();
-#endif
 	msm_routing_delete_cal_data();
 	memset(&be_dai_name_table, 0, sizeof(be_dai_name_table));
 	mutex_destroy(&routing_lock);

@@ -124,13 +124,6 @@ ifdef CONFIG_MSM_QDSP6_PDR
 QDSP6_PDR_OBJS += audio_pdr.o
 endif
 
-ifeq ($(TARGET_PRODUCT), aquila)
-AUDIO_FEATURE_ENABLED_SPKR_PROTECTION := true
-endif
-ifeq ($(TARGET_PRODUCT), lyra)
-AUDIO_FEATURE_ENABLED_SPKR_PROTECTION := true
-endif
-
 ifdef CONFIG_MSM_QDSP6_NOTIFIER
 QDSP6_NOTIFIER_OBJS += audio_notifier.o audio_ssr.o
 endif
@@ -164,14 +157,6 @@ CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
 		-Wall\
 		-Werror\
 		-D__linux__
-
-ifeq ($(strip $(AUDIO_FEATURE_ENABLED_SPKR_PROTECTION)),true)
-	CDEFINES += -DSMART_AMP
-endif
-
-ifneq (,$(filter $(TARGET_PRODUCT), davinci davinciin))
-	CDEFINES += -DCONFIG_SND_SOC_TFA9874_FOR_DAVI
-endif
 
 KBUILD_CPPFLAGS += $(CDEFINES)
 
