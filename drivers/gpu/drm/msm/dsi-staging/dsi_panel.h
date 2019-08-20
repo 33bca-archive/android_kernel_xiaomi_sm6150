@@ -108,10 +108,13 @@ struct dsi_backlight_config {
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_scale_ad;
+	bool dcs_type_ss_ea;
+	bool dcs_type_ss_eb;
 
 	int en_gpio;
 	bool bl_remap_flag;
-	bool dcs_type_ss;
+	bool samsung_prepare_hbm_flag;
+	bool local_hbm_flag;
 	/* PWM params */
 	bool pwm_pmi_control;
 	u32 pwm_pmic_bank;
@@ -232,9 +235,6 @@ struct dsi_panel {
 	ktime_t fod_backlight_off_time;
 	ktime_t fod_hbm_off_time;
 
-	u32 panel_p3_mode;
-	u32 close_crc;
-
 	bool elvss_dimming_check_enable;
 	struct dsi_read_config elvss_dimming_cmds;
 	struct dsi_panel_cmd_set elvss_dimming_offset;
@@ -242,8 +242,9 @@ struct dsi_panel {
 	struct dsi_panel_cmd_set hbm_fod_off;
 
 	bool fod_backlight_flag;
-	u32 fod_target_backlight;
 	bool fod_flag;
+	u32 fod_target_backlight;
+	bool fod_skip_flag; /* optimize to skip nolp command */
 	bool in_aod; /* set  DISPPARAM_DOZE_BRIGHTNESS_HBM/LBM only in AOD */
 };
 

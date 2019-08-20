@@ -226,17 +226,14 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		goto error;
 	}
 
-	if (drm_dev && drm_dev->doze_state == DRM_BLANK_LP1) {
+	if (drm_dev && (drm_dev->doze_state == DRM_BLANK_LP1 || drm_dev->doze_state == DRM_BLANK_LP2)) {
 		rc = dsi_panel_set_doze_backlight(display, (u32)bl_temp);
 		if (rc)
 			pr_err("unable to set doze backlight\n");
 		rc = dsi_panel_enable_doze_backlight(panel, (u32)bl_temp);
 		if (rc)
 			pr_err("unable to enable doze backlight\n");
-	} else if (drm_dev && drm_dev->doze_state == DRM_BLANK_LP2) {
-		pr_err("unable to set doze backlight in LP2 state:%u\n", (u32)bl_temp);
 	} else {
-		drm_dev->doze_brightness = DOZE_BRIGHTNESS_INVALID;
 		rc = dsi_panel_set_backlight(panel, (u32)bl_temp);
 		if (rc)
 			pr_err("unable to set backlight\n");
@@ -1248,7 +1245,7 @@ int dsi_display_set_power(struct drm_connector *connector,
 	}
 
 	g_notify_data.data = &event;
-	pr_info("%s %d\n", __func__, event);
+
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
 		drm_notifier_call_chain(DRM_EARLY_EVENT_BLANK, &g_notify_data);
@@ -5475,8 +5472,6 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	display->name = name;
 	display->pdev = pdev;
 	display->boot_disp = boot_disp;
-	display->is_prim_display = true;
-	display->is_first_boot = true;
 
 	dsi_display_parse_cmdline_topology(display, index);
 
