@@ -16,8 +16,8 @@ extern "C" {
 #include <linux/string.h>
 #include <linux/firmware.h>
 #include "../goodix_ts_core.h"
-const char default_order_name_first[] = "goodix_gt9886_limit_f10_first.tporder";
-const char default_order_name_second[] = "goodix_gt9886_limit_f10_second.tporder";
+const char default_order_name_first[] = "goodix_gt9886_limit_f11_first.tporder";
+const char default_order_name_second[] = "goodix_gt9886_limit_f11_second.tporder";
 #define TP_MARKER_SDC 0X48
 #define TP_MARKER_VXN 0X51
 /*******************************************************************************

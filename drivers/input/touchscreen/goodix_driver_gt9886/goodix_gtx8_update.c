@@ -19,7 +19,7 @@
 #include "goodix_cfg_bin.h"
 #include "goodix_default_fw.h"
 /* COMMON PART - START */
-#define TS_DEFAULT_FIRMWARE			"goodix_gt9886_fw_f10.bin"
+#define TS_DEFAULT_FIRMWARE			"goodix_gt9886_fw_f11.bin"
 
 #define FW_HEADER_SIZE				256
 #define FW_SUBSYS_INFO_SIZE			8
