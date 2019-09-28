@@ -1087,7 +1087,7 @@ int dsi_display_set_power(struct drm_connector *connector,
 {
 	struct dsi_display *display = disp;
 	struct msm_drm_notifier notify_data;
-	static int pre_state = -1;
+	static __maybe_unused int pre_state = -1;
 	int event = power_mode;
 	int rc = 0;
 
