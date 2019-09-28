@@ -435,8 +435,8 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 {
 	int rc = 0;
 	int i, j;
-	struct cam_ctx_request  *req, *next_req;
-	struct cam_isp_ctx_req  *req_isp, *next_req_isp;
+	struct cam_ctx_request  *req,  __maybe_unused *next_req;
+	struct cam_isp_ctx_req  *req_isp,  __maybe_unused *next_req_isp;
 	struct cam_context *ctx = ctx_isp->base;
 
 	if (list_empty(&ctx->active_req_list)) {
