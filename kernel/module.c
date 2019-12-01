@@ -1286,10 +1286,6 @@ static int check_version(const struct load_info *info,
 	unsigned int i, num_versions;
 	struct modversion_info *versions;
 
-	/* Force audio modules to load */
-	if (!strncmp("audio_", mod->name, 6))
-		return 1;
-
 	/* Exporting module didn't supply crcs?  OK, we're already tainted. */
 	if (!crc)
 		return 1;
