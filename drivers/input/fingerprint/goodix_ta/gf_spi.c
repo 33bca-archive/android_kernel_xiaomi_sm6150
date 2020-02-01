@@ -14,6 +14,8 @@
  */
 #define pr_fmt(fmt)     KBUILD_MODNAME ": " fmt
 
+#define GOODIX_DRM_INTERFACE_WA
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/ioctl.h>
@@ -42,7 +44,9 @@
 #include <linux/cpufreq.h>
 #include <linux/pm_wakeup.h>
 #include <drm/drm_bridge.h>
+#ifndef GOODIX_DRM_INTERFACE_WA
 #include <linux/msm_drm_notify.h>
+#endif
 
 #include "gf_spi.h"
 
@@ -714,6 +718,7 @@ static const struct file_operations gf_fops = {
 };
 
 
+#ifndef GOODIX_DRM_INTERFACE_WA
 static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 					unsigned long val, void *data)
 {
@@ -779,6 +784,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 static struct notifier_block goodix_noti_block = {
 	.notifier_call = goodix_fb_state_chg_callback,
 };
+#endif
 
 static struct class *gf_class;
 #if defined(USE_SPI_BUS)
@@ -874,8 +880,10 @@ static int gf_probe(struct platform_device *pdev)
 
 	spi_clock_set(gf_dev, 1000000);
 #endif
+#ifndef GOODIX_DRM_INTERFACE_WA
 	gf_dev->notifier = goodix_noti_block;
 	msm_drm_register_client(&gf_dev->notifier);
+#endif
 	gf_dev->irq = gf_irq_num(gf_dev);
 	wakeup_source_init(&fp_wakelock, "fp_wakelock");
 	pr_debug("version V%d.%d.%02d\n", VER_MAJOR, VER_MINOR, PATCH_LEVEL);
@@ -917,7 +925,9 @@ static int gf_remove(struct platform_device *pdev)
 {
 	struct gf_dev *gf_dev = &gf;
 	wakeup_source_trash(&fp_wakelock);
+#ifndef GOODIX_DRM_INTERFACE_WA
 	msm_drm_unregister_client(&gf_dev->notifier);
+#endif
 
 	/* make sure ops on existing fds can abort cleanly */
 	if (gf_dev->irq) {
